@@ -140,6 +140,16 @@ test('the summary shows the unread line even with no pair', () => {
   assert.ok(!text.includes('possible duplicate'));
 });
 
+test('a pair with one unread amount prints "unread" in the summary line', () => {
+  const rows = [
+    { supplier: 'Acme', invoice_number: 'N1', issue_date: '2026-01-01', gross: '500,00' },
+    { supplier: 'Acme', invoice_number: 'N1', issue_date: '2026-01-02', gross: '500.00' },
+  ];
+  const text = summary(findDuplicates(rows)).text;
+  assert.ok(text.includes('unread vs 500'));
+  assert.ok(!text.includes('null') && !text.includes('undefined'));
+});
+
 // Golden output of the ORIGINAL Find Duplicates (workflow.json at commit f851497, run with the
 // same rows), with flagged_at left out. Real pairs must keep these verdicts and keys.
 test('real pairs match the original code exactly', () => {

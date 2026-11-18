@@ -61,7 +61,7 @@ The workflow does not guess. Set `decimalSeparator` to match how your sheet writ
 
 When an amount is filled in but cannot be read, the workflow reports it and does not guess. The row still takes part in the invoice-number checks with no amount, and one extra row with the verdict `AMOUNT NOT READ` is written to the review tab, using the existing headers: the sheet row numbers go in `sheet_rows` and `pair_key` is `unread|` followed by those numbers. It is raised once for each distinct set of rows, so if a new unread row appears the whole list is raised again. Slack shows it as its own line, even on a day with no new pair. A blank amount cell is not treated as unread.
 
-If you set `currencyColumn`, each row's currency is that cell trimmed and in capitals, and two amounts only count as equal when their currencies are equal. The currency is not written to the review tab or to Slack, because that would need a new column and the review tab keeps its 11 headers. Leave the setting empty and currencies are ignored, so `USD 500` and `EUR 500` count as the same amount.
+If you set `currencyColumn`, each row's currency is that cell trimmed and in capitals, and two amounts only count as equal when their currencies are equal. The currency is not written to the review tab or to Slack, because that would need a new column and the review tab keeps its 11 headers. Leave the setting empty and currencies are ignored, so `USD 500` and `EUR 500` count as the same amount. Turning `currencyColumn` on changes the pair key, so pairs already in the review tab are raised once more. A `currencyColumn` name that matches no column header leaves every currency blank, so the workflow behaves as if the setting were empty.
 
 ## How it works
 
@@ -88,7 +88,7 @@ If there are no new pairs, nothing is written and nothing is posted.
 
 - The amount reading and pairing logic is tested offline. Run `node tests/amounts.test.mjs`: it loads the Code nodes out of `workflow.json` and runs them against stubs, covering both decimal settings, brackets and minus signs, currency codes with and without `currencyColumn`, and the `AMOUNT NOT READ` row. It also checks that real pairs keep the same verdicts and keys as the version before this change.
 - This workflow has not been run end to end by us, against a real sheet or Slack.
-- A written check on 29 October 2026 compared the workflow file with its public description and found no mismatches in node count, credentials, setup steps, the review tab's 11 headers, the settings defaults or the main feature claims. No workflow run was involved.
+- A written check on 29 October 2026 compared the workflow file with its public description. It predates the amount, currency and unread-row changes, so it does not cover this version. No workflow run was involved.
 - No connected Google Sheets or Slack account has been used with this file by us, so how the sheet and Slack nodes behave comes only from reading them.
 
 ## Licence
