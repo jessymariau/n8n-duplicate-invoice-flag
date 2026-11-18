@@ -25,7 +25,7 @@ A pair already recorded in the review tab is not raised again the next day.
 1. In the spreadsheet that holds your invoices, check the invoice tab has a header row with these four columns, or note your own column names for step 4: `supplier`, `invoice_number`, `issue_date`, `gross`. The file `sample-sheets/invoices-headers.csv` shows them.
 2. Add a second tab named `Possible duplicates`. Paste the header line from `sample-sheets/possible-duplicates-headers.csv` into row 1, or import that file.
 3. Import `workflow.json` into n8n. Connect your Google Sheets credential on the three Google Sheets nodes and your Slack credential on the Slack node.
-4. Open the **Settings** node. Replace the `invoicesSheetUrl` placeholder with the URL of your spreadsheet, and set the column names to match your invoice tab if they differ.
+4. Open the **Settings** node. Replace the `invoicesSheetUrl` placeholder with the URL of your spreadsheet, set the column names to match your invoice tab if they differ, and set `decimalSeparator` to `,` if your amounts use comma decimals.
 5. Run the workflow once by hand on a copy of your sheet. Read the `Possible duplicates` tab and the Slack message. If legitimate repeating invoices are flagged, lower `dateWindowDays`.
 6. Switch the workflow on. It runs at 08:00 on weekdays (cron `0 8 * * 1-5`, in the timezone of your n8n instance).
 
@@ -42,9 +42,26 @@ All in the **Settings** node:
 | `numberColumn` | `invoice_number` | Column with the invoice number |
 | `dateColumn` | `issue_date` | Column with the invoice date |
 | `amountColumn` | `gross` | Column with the amount |
+| `currencyColumn` | empty | Optional column with the currency. Empty means one currency, as before |
+| `decimalSeparator` | `.` | `.` or `,`. How amounts are written in your sheet. Any other value stops the run |
 | `amountTolerance` | `0.01` | How close two amounts must be to count as equal |
 | `dateWindowDays` | `45` | Days apart for the same-amount check |
 | `slackChannel` | `#accounts` | Channel that receives the message |
+
+## How amounts are read
+
+The workflow does not guess. Set `decimalSeparator` to match how your sheet writes numbers.
+
+- A cell that is already a number is used as it is.
+- Currency symbols and three-letter capital codes (`USD 500`, `£500`, `500 EUR`) are dropped.
+- Brackets, a leading minus or a trailing minus make the amount negative: `(500.00)`, `500.00-` and `-500.00` all read as -500.
+- With `.`: the dot is the decimal point, and commas, spaces and apostrophes are thousands marks. A thousands mark must sit between groups of exactly three digits, so `1,234.56` reads as 1234.56, while `500,00` and `1.234,56` are unread.
+- With `,`: the comma is the decimal point, and dots, spaces and apostrophes are thousands marks, again in groups of exactly three digits. `500,00` reads as 500 and `1.234,56` as 1234.56, while `500.00` and `1,234.56` are unread.
+- After that, only digits and at most one decimal point may remain. Anything else is unread.
+
+When an amount is filled in but cannot be read, the workflow reports it and does not guess. The row still takes part in the invoice-number checks with no amount, and one extra row with the verdict `AMOUNT NOT READ` is written to the review tab, using the existing headers: the sheet row numbers go in `sheet_rows` and `pair_key` is `unread|` followed by those numbers. It is raised once for each distinct set of rows, so if a new unread row appears the whole list is raised again. Slack shows it as its own line, even on a day with no new pair. A blank amount cell is not treated as unread.
+
+If you set `currencyColumn`, each row's currency is that cell trimmed and in capitals, and two amounts only count as equal when their currencies are equal. The currency is not written to the review tab or to Slack, because that would need a new column and the review tab keeps its 11 headers. Leave the setting empty and currencies are ignored, so `USD 500` and `EUR 500` count as the same amount.
 
 ## How it works
 
@@ -61,6 +78,7 @@ If there are no new pairs, nothing is written and nothing is posted.
 ## What it does not do
 
 - It does not block a payment. It cannot see your bank or your payment system.
+- It does not convert currencies, and it cannot read a number written in another style, such as 12,34,567.00 with lakh grouping.
 - It compares rows already in the sheet. It does not read PDFs or emails.
 - It compares every pair of rows, so a very large sheet will make the Code node slow.
 - It matches on supplier name after tidying, so two different spellings of a name that tidy to different text are treated as different suppliers.
@@ -68,9 +86,10 @@ If there are no new pairs, nothing is written and nothing is posted.
 
 ## What was and was not tested
 
-- This workflow has not been run end to end by us.
+- The amount reading and pairing logic is tested offline. Run `node tests/amounts.test.mjs`: it loads the Code nodes out of `workflow.json` and runs them against stubs, covering both decimal settings, brackets and minus signs, currency codes with and without `currencyColumn`, and the `AMOUNT NOT READ` row. It also checks that real pairs keep the same verdicts and keys as the version before this change.
+- This workflow has not been run end to end by us, against a real sheet or Slack.
 - A written check on 29 October 2026 compared the workflow file with its public description and found no mismatches in node count, credentials, setup steps, the review tab's 11 headers, the settings defaults or the main feature claims. No workflow run was involved.
-- No connected Google Sheets or Slack account has been used with this file by us, so the behaviour described here comes from reading the Code nodes.
+- No connected Google Sheets or Slack account has been used with this file by us, so how the sheet and Slack nodes behave comes only from reading them.
 
 ## Licence
 
