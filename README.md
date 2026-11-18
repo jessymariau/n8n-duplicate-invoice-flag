@@ -27,7 +27,7 @@ A pair already recorded in the review tab is not raised again the next day.
 3. Import `workflow.json` into n8n. Connect your Google Sheets credential on the three Google Sheets nodes and your Slack credential on the Slack node.
 4. Open the **Settings** node. Replace the `invoicesSheetUrl` placeholder with the URL of your spreadsheet, and set the column names to match your invoice tab if they differ.
 5. Run the workflow once by hand on a copy of your sheet. Read the `Possible duplicates` tab and the Slack message. If legitimate repeating invoices are flagged, lower `dateWindowDays`.
-6. Switch the workflow on. It runs at 08:00 on weekdays (cron `0 8 * * 1-5`, in the timezone set in the workflow's settings).
+6. Switch the workflow on. It runs at 08:00 on weekdays (cron `0 8 * * 1-5`, in the timezone of your n8n instance).
 
 ## Settings
 
@@ -68,12 +68,10 @@ If there are no new pairs, nothing is written and nothing is posted.
 
 ## What was and was not tested
 
-- This workflow has not been run end to end by us: no test-run record is on file for it.
+- This workflow has not been run end to end by us.
 - A written check on 29 October 2026 compared the workflow file with its public description and found no mismatches in node count, credentials, setup steps, the review tab's 11 headers, the settings defaults or the main feature claims. No workflow run was involved.
 - No connected Google Sheets or Slack account has been used with this file by us, so the behaviour described here comes from reading the Code nodes.
 
 ## Licence
 
 This project uses the MIT licence. See `LICENSE`.
-
-Made by Fractional HQ Ltd.
