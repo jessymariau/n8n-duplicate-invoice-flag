@@ -14,6 +14,18 @@ For every pair of rows from the same supplier, the workflow tidies the supplier 
 
 A pair already recorded in the review tab is not raised again the next day.
 
+## Supplier aliases (optional)
+
+If one supplier is written two ways that do not tidy to the same text, list them on a third tab. It has two columns: `spelling` (the name as it appears on an invoice) and `treat_as` (the name to use instead). Header case and spaces around the header text do not matter. If the tab has rows but no `spelling` or `treat_as` header, the run stops with an error. A tab with headers only means no aliases. The file `sample-sheets/supplier-aliases-headers.csv` shows the headers and two example rows.
+
+- The tab is read once per run, before anything is compared. Each invoice's supplier is swapped for its `treat_as` name, then the usual checks run.
+- Matching is as forgiving as the supplier tidying: case, punctuation and Ltd or Limited do not matter. `ACME Supplies` on the alias tab matches `Acme Supplies Ltd.` on an invoice.
+- A row with either column blank, or one that tidies to nothing, is ignored.
+- Aliases are applied one step only. If the tab says A to B and B to C, an invoice from A is treated as B, not C, so a supplier that should reach C needs its own row pointing at C.
+- If a spelling is listed twice, the first row from the top wins.
+- A pair that exists only because of an alias is raised like any other. The `supplier` column shows the spelling from the first row of the pair.
+- The pair key uses the alias name. Turning aliases on changes the key of any pair whose supplier has an alias row, so such a pair already in the review tab is raised once more. Other pairs keep their keys.
+
 ## What you need
 
 - A Google Sheet with an invoice tab, connected to n8n through a Google Sheets credential.
@@ -24,10 +36,11 @@ A pair already recorded in the review tab is not raised again the next day.
 
 1. In the spreadsheet that holds your invoices, check the invoice tab has a header row with these four columns, or note your own column names for step 4: `supplier`, `invoice_number`, `issue_date`, `gross`. The file `sample-sheets/invoices-headers.csv` shows them.
 2. Add a second tab named `Possible duplicates`. Paste the header line from `sample-sheets/possible-duplicates-headers.csv` into row 1, or import that file.
-3. Import `workflow.json` into n8n. Connect your Google Sheets credential on the three Google Sheets nodes and your Slack credential on the Slack node.
-4. Open the **Settings** node. Replace the `invoicesSheetUrl` placeholder with the URL of your spreadsheet, set the column names to match your invoice tab if they differ, and set `decimalSeparator` to `,` if your amounts use comma decimals.
-5. Run the workflow once by hand on a copy of your sheet. Read the `Possible duplicates` tab and the Slack message. If legitimate repeating invoices are flagged, lower `dateWindowDays`.
-6. Switch the workflow on. It runs at 08:00 on weekdays (cron `0 8 * * 1-5`, in the timezone of your n8n instance).
+3. Optional: to merge supplier spellings, add a tab with the headers from `sample-sheets/supplier-aliases-headers.csv` and fill it in. Skip this step if you do not need it.
+4. Import `workflow.json` into n8n. Connect your Google Sheets credential on the Google Sheets nodes (three, or four with aliases) and your Slack credential on the Slack node.
+5. Open the **Settings** node. Replace the `invoicesSheetUrl` placeholder with the URL of your spreadsheet, set the column names to match your invoice tab if they differ, set `decimalSeparator` to `,` if your amounts use comma decimals, and type the alias tab's name into `aliasesTab` if you made one.
+6. Run the workflow once by hand on a copy of your sheet. Read the `Possible duplicates` tab and the Slack message. If legitimate repeating invoices are flagged, lower `dateWindowDays`.
+7. Switch the workflow on. It runs at 08:00 on weekdays (cron `0 8 * * 1-5`, in the timezone of your n8n instance).
 
 ## Settings
 
@@ -43,6 +56,7 @@ All in the **Settings** node:
 | `dateColumn` | `issue_date` | Column with the invoice date |
 | `amountColumn` | `gross` | Column with the amount |
 | `currencyColumn` | empty | Optional column with the currency. Empty means one currency, as before |
+| `aliasesTab` | empty | Name of the optional alias tab. Empty means no alias tab is read. If you set a name, the tab must exist |
 | `decimalSeparator` | `.` | `.` or `,`. How amounts are written in your sheet. Any other value stops the run |
 | `amountTolerance` | `0.01` | How close two amounts must be to count as equal |
 | `dateWindowDays` | `45` | Days apart for the same-amount check |
@@ -68,10 +82,11 @@ If you set `currencyColumn`, each row's currency is that cell trimmed and in cap
 1. **Every Weekday Morning** starts the run.
 2. **Settings** holds the values above.
 3. **Read The Invoices** reads the invoice tab once.
-4. **Find Duplicates** is a Code node that normalises names and numbers and compares every pair from the same supplier.
-5. **Read Already Flagged** reads the review tab, and **Keep Only New Pairs** drops pairs whose `pair_key` is already there.
-6. **Log The Pairs** appends each new pair to the review tab.
-7. **Write One Summary** builds one message, however many pairs there are (the first 15 are listed), and **Warn Accounts In Slack** posts it.
+4. **Aliases Switched On?** checks `aliasesTab`. If it is empty, the run goes straight on and no alias tab is read. If it has a name, **Read Supplier Aliases** reads that tab once first.
+5. **Find Duplicates** is a Code node that normalises names and numbers, applies the aliases if there are any, and compares every pair from the same supplier.
+6. **Read Already Flagged** reads the review tab, and **Keep Only New Pairs** drops pairs whose `pair_key` is already there.
+7. **Log The Pairs** appends each new pair to the review tab.
+8. **Write One Summary** builds one message, however many pairs there are (the first 15 are listed), and **Warn Accounts In Slack** posts it.
 
 If there are no new pairs, nothing is written and nothing is posted.
 
@@ -81,14 +96,15 @@ If there are no new pairs, nothing is written and nothing is posted.
 - It does not convert currencies, and it cannot read a number written in another style, such as 12,34,567.00 with lakh grouping.
 - It compares rows already in the sheet. It does not read PDFs or emails.
 - It compares every pair of rows, so a very large sheet will make the Code node slow.
-- It matches on supplier name after tidying, so two different spellings of a name that tidy to different text are treated as different suppliers.
+- It matches on supplier name after tidying, so two different spellings of a name that tidy to different text are treated as different suppliers, unless your alias tab lists them.
 - It does not remove or mark the original invoice rows. The review tab is the only thing it writes.
 
 ## What was and was not tested
 
 - The amount reading and pairing logic is tested offline. Run `node tests/amounts.test.mjs`: it loads the Code nodes out of `workflow.json` and runs them against stubs, covering both decimal settings, brackets and minus signs, currency codes with and without `currencyColumn`, and the `AMOUNT NOT READ` row. It also checks that real pairs keep the same verdicts and keys as the version before this change.
+- The alias logic is tested offline only. Run `node tests/aliases.test.mjs`: it covers no alias data giving the same output as before, an alias pairing two spellings, forgiving matching, blank rows, chains, a spelling listed twice and the pair key change. The If node and the alias read node have not been run in n8n.
 - This workflow has not been run end to end by us, against a real sheet or Slack.
-- A written check on 29 October 2026 compared the workflow file with its public description. It predates the amount, currency and unread-row changes, so it does not cover this version. No workflow run was involved.
+- A written check on 29 October 2026 compared the workflow file with its public description. It predates the amount, currency, unread-row and alias changes, so it does not cover this version. No workflow run was involved.
 - No connected Google Sheets or Slack account has been used with this file by us, so how the sheet and Slack nodes behave comes only from reading them.
 
 ## Licence
