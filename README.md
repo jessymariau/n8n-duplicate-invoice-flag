@@ -60,6 +60,7 @@ All in the **Settings** node:
 | `decimalSeparator` | `.` | `.` or `,`. How amounts are written in your sheet. Any other value stops the run |
 | `amountTolerance` | `0.01` | How close two amounts must be to count as equal |
 | `dateWindowDays` | `45` | Days apart for the same-amount check |
+| `alwaysReport` | `false` | `true` or `false`. When on, a run with no new pairs still posts one short Slack message saying the check ran with 0 new pairs, and writes nothing to the review tab |
 | `slackChannel` | `#accounts` | Channel that receives the message |
 
 ## How amounts are read
@@ -85,10 +86,12 @@ If you set `currencyColumn`, each row's currency is that cell trimmed and in cap
 4. **Aliases Switched On?** checks `aliasesTab`. If it is empty, the run goes straight on and no alias tab is read. If it has a name, **Read Supplier Aliases** reads that tab once first.
 5. **Find Duplicates** is a Code node that normalises names and numbers, applies the aliases if there are any, and compares every pair from the same supplier.
 6. **Read Already Flagged** reads the review tab, and **Keep Only New Pairs** drops pairs whose `pair_key` is already there.
-7. **Log The Pairs** appends each new pair to the review tab.
+7. **Nothing New To Log?** sends real pairs on to **Log The Pairs**, which appends each one to the review tab. A placeholder item (see below) is sent past it, straight to the summary.
 8. **Write One Summary** builds one message, however many pairs there are (the first 15 are listed), and **Warn Accounts In Slack** posts it.
 
-If there are no new pairs, nothing is written and nothing is posted.
+With the default, `alwaysReport` set to `false`, if there are no new pairs, nothing is written and nothing is posted. n8n does not run the nodes after one that returns no items, so a quiet morning and a workflow that did not run look the same in Slack.
+
+With `alwaysReport` set to `true`, a run with no new pairs and no unread amount still posts one message, such as "Duplicate invoice check ran on 20 Nov 2026 at 08:00: 0 new possible duplicate pairs. Nothing was added to the review tab." The time is the run's own time in the timezone of your n8n instance. To make that possible, **Find Duplicates** and **Keep Only New Pairs** return one placeholder item when they would otherwise return no items. It has a single field, `no_new_pairs`, and no `pair_key`. The placeholder never reaches the review tab: **Nothing New To Log?** tests for it and the only way into **Log The Pairs** is its other output. The summary reads only that item, so it needs nothing from **Settings**. A run with new pairs, or with an unread amount, behaves exactly as with the setting off. An invoice tab with no rows produces no message at all, because the workflow stops at the read.
 
 ## What it does not do
 
@@ -103,8 +106,9 @@ If there are no new pairs, nothing is written and nothing is posted.
 
 - The amount reading and pairing logic is tested offline. Run `node tests/amounts.test.mjs`: it loads the Code nodes out of `workflow.json` and runs them against stubs, covering both decimal settings, brackets and minus signs, currency codes with and without `currencyColumn`, and the `AMOUNT NOT READ` row. It also checks that real pairs keep the same verdicts and keys as the version before this change.
 - The alias logic is tested offline only. Run `node tests/aliases.test.mjs`: it covers no alias data giving the same output as before, an alias pairing two spellings, forgiving matching, blank rows, chains, a spelling listed twice and the pair key change. The If node and the alias read node have not been run in n8n.
+- The `alwaysReport` setting is tested offline only. Run `node tests/always-report.test.mjs`: it loads the Code nodes and the If node from `workflow.json` and chains them as n8n would. It checks that the default gives no message on a quiet run and that the setting on gives one message and no review-tab row. It checks that a run with new pairs matches the default and that an unread amount on an otherwise quiet run behaves as documented. It also checks the wiring into **Log The Pairs**. n8n itself, including the new If node and the empty-result behaviour, has not been run.
 - This workflow has not been run end to end by us, against a real sheet or Slack.
-- A written check on 29 October 2026 compared the workflow file with its public description. It predates the amount, currency, unread-row and alias changes, so it does not cover this version. No workflow run was involved.
+- A written check on 29 October 2026 compared the workflow file with its public description. It predates the amount, currency, unread-row, alias and `alwaysReport` changes, so it does not cover this version. No workflow run was involved.
 - No connected Google Sheets or Slack account has been used with this file by us, so how the sheet and Slack nodes behave comes only from reading them.
 
 ## Licence
